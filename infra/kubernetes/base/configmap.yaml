@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: secureflow-config
+  namespace: secureflow
+data:
+  # CK-09 — secrets in plaintext ConfigMap.
+  # Remediation in Step 14: migrate to Vault Agent Injector.
+  JWT_SECRET: "***REMOVED***"
+  SESSION_SECRET: "***REMOVED***"
+  AUTH_DB_PASSWORD: "***REMOVED***"
+  TX_DB_PASSWORD: "***REMOVED***"
+  AUTH_SERVICE_URL: "http://auth-service:5001"
+  TRANSACTION_SERVICE_URL: "http://transaction-service:5002"
