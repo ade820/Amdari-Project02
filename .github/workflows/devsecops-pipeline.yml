@@ -21,15 +21,30 @@ jobs:
       - name: Checkout full git history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0          # full history needed for --log-opts='--all'
+          fetch-depth: 0          # full history required for --log-opts='--all'
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "true"
+      - name: Run Gitleaks (full history scan)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            zricethezav/gitleaks:latest \
+            detect \
+              --source /repo \
+              --config /repo/.gitleaks.toml \
+              --log-opts="--all" \
+              --no-banner \
+              --verbose \
+              --report-format json \
+              --report-path /repo/gitleaks-report.json \
+              --exit-code 1
+
+      - name: Upload findings report
+        if: always()              # upload even when scan failed
+        uses: actions/upload-artifact@v4
         with:
-          config-path: .gitleaks.toml
+          name: gitleaks-report
+          path: gitleaks-report.json
+          retention-days: 30
   # =========================================================================
   # Stage 2 — Static Application Security Testing (SonarQube)
   # Owner: AppSec findings, DevSecOps tooling.
