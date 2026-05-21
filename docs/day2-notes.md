@@ -82,3 +82,84 @@ blocks until cleared.
 
 This is the rationale I'll document in docs/security-gate-policy.md on
 Day 5.
+
+## Day 3 Gitleaks baseline scan — observations
+
+Local Gitleaks run with default rules only (no .gitleaks.toml yet) found
+3 secrets across the entire git history:
+
+1. **JWT in evidence/exploits/05-fv03-session-forgery.md** — false
+   positive; documentation quoting the exploit output. Will be allowlisted
+   in .gitleaks.toml.
+
+2. **SONAR_TOKEN in .env (commit ced5589)** — true positive. IV-04.
+   The pipeline correctly detects this.
+
+3. **db_password = "postgres" in infra/terraform/main.tf (commit 67266955
+   from upstream baseline)** — true positive. Not previously catalogued
+   in VULNERABILITIES.md but logically part of IV-01 (hardcoded DB
+   password). Will note in the Week 1 progress report as a baseline
+   finding the upstream index missed.
+
+## Gaps the default ruleset missed
+
+Default Gitleaks DID NOT catch:
+- AWS_ACCESS_KEY_ID=***REMOVED*** (excluded by Gitleaks'
+  documentation-keys exemption — `***REMOVED***` is AWS's own
+  example value and is treated as not-a-real-key by default)
+- AWS_SECRET_ACCESS_KEY (same exemption)
+- SECRET_KEY=***REMOVED*** in .env
+- JWT_SECRET=***REMOVED*** in docker-compose.yml
+- SESSION_SECRET=***REMOVED*** in both .env and docker-compose.yml
+- POSTGRES_PASSWORD=***REMOVED*** / ***REMOVED*** in docker-compose.yml
+
+These are the gaps .gitleaks.toml must close. The defaults handle the
+well-known SaaS provider tokens but cannot anticipate project-specific
+patterns. The custom-rule layer is what makes Stage 1 trustworthy
+against any given codebase.
+
+## Day 3 Gitleaks scan with .gitleaks.toml applied
+
+21 findings across the entire git history. Sources:
+
+### .env (commit ced5589 — my IV-04 baseline)
+- AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (default rule was bypassed by
+  AWS's documentation-key exemption; my strict custom rules catch them)
+- SECRET_KEY, SESSION_SECRET
+- DB_PASSWORD, POSTGRES_PASSWORD
+- SONAR_TOKEN (default sonar-api-token rule)
+
+### docker-compose.yml (upstream commit 67266955)
+- POSTGRES_PASSWORD x2 (auth-db, transaction-db)
+- DB_PASSWORD x2 (auth-service, transaction-service)
+- JWT_SECRET
+- SESSION_SECRET
+
+### infra/kubernetes/base/configmap.yaml — NEW finding category (CK-09)
+- JWT_SECRET
+- SESSION_SECRET
+- AUTH_DB_PASSWORD
+- TX_DB_PASSWORD
+
+VULNERABILITIES.md flagged CK-09 ("Secrets in ConfigMaps"); Gitleaks
+just confirmed which keys. These will need to migrate to Vault in
+Week 2, with ConfigMap → Vault Agent Injector substitution.
+
+### infra/terraform/main.tf
+- db_password = "postgres" (caught by both default and custom rules)
+
+### services/*/app.py
+- AV-07: SECRET_KEY fallback literal in auth-service/app.py
+- FV-03-adjacent: SESSION_SECRET fallback literal in frontend/app.py
+
+These two are AppSec-owned at the code level (removing the fallback
+literal), but Stage 1 still hard-fails because the credential is
+committed regardless of where it lives. The classification of who
+fixes what happens at the security gate on Day 5.
+
+## Detection coverage achieved
+
+Before .gitleaks.toml:  3 findings (1 false positive + 2 true positives)
+After .gitleaks.toml:  21 findings (0 false positives + 21 true positives)
+
+The improvement is the value of the custom-rule layer.
