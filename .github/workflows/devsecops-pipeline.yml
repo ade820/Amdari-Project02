@@ -18,10 +18,18 @@ jobs:
     name: Stage 1 — Gitleaks (secrets)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "Stage 1 placeholder — Gitleaks comes Day 3"
+      - name: Checkout full git history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history needed for --log-opts='--all'
 
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "true"
+        with:
+          config-path: .gitleaks.toml
   # =========================================================================
   # Stage 2 — Static Application Security Testing (SonarQube)
   # Owner: AppSec findings, DevSecOps tooling.
