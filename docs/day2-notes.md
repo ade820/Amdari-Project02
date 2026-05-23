@@ -163,3 +163,46 @@ Before .gitleaks.toml:  3 findings (1 false positive + 2 true positives)
 After .gitleaks.toml:  21 findings (0 false positives + 21 true positives)
 
 The improvement is the value of the custom-rule layer.
+
+## Stage 2 — SonarCloud SAST results
+
+After disabling SonarCloud's Automatic Analysis (it conflicted with
+CI-based analysis from GitHub Actions), Stage 2 successfully scanned
+all three services.
+
+Dashboard summary (SonarCloud project ade820_Amdari-Project02):
+- 27 open issues
+- 18 security issues (5 Blocker, 12 Medium, 1 Low — by SonarCloud severity)
+- 25 security hotspots to review
+- 1.2k lines of code analyzed
+
+Differentiated gate behaviour confirmed working:
+- Stage 2 hard-failed on 2 BLOCKER findings — flask-app-bind-0.0.0.0
+  in frontend/app.py (line 185) and transaction-service/app.py (line 201)
+- These are AppSec-owned (server-bind security pattern; not in VULNERABILITIES.md
+  but a legitimate SAST catch by SonarCloud's python:S4502 rule)
+- Non-BLOCKER findings (MAJOR/MINOR/INFO) would have soft-passed and
+  routed via PR comment
+
+What SonarCloud caught vs my VULNERABILITIES.md index:
+- AV-01, AV-02 (SQL injection)              — surfaced
+- AV-07 (hardcoded JWT_SECRET literal)      — surfaced
+- New finding NOT in my index: app.run(host='0.0.0.0')
+  in 3 services. SAST tools surface findings beyond hand-curated
+  indexes — this is a normal outcome and should be added to the
+  Week 1 progress report.
+
+## Note on SonarCloud Automatic vs CI Analysis
+
+When linking a new project, SonarCloud defaults to Automatic Analysis.
+This conflicts with explicit CI-based analysis: the scanner errors out
+with "You are running CI analysis while Automatic Analysis is enabled."
+
+Resolution: Project → Administration → Analysis Method → toggle
+Automatic Analysis OFF. CI-based analysis (via SonarSource/sonarcloud-
+github-action) then works normally.
+
+For a DevSecOps pipeline this is the right choice — CI-based analysis
+is deterministic and participates in our control flow (we wait, fetch,
+evaluate gate). Automatic Analysis is asynchronous and outside the
+pipeline's control.
