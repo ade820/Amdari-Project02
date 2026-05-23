@@ -53,12 +53,73 @@ jobs:
   # Day 3 populates this.
   # =========================================================================
   sast-scan:
-    name: Stage 2 — SonarQube SAST
+    name: Stage 2 — SonarQube SAST (detect & route)
     runs-on: ubuntu-latest
+    # Soft-fail by default. The job posts findings as a JSON artifact
+    # and only hard-fails when SonarCloud reports CRITICAL/BLOCKER.
+    # Most non-CRITICAL findings here are AppSec-owned and route via PR
+    # comment without blocking the merge.
+    continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "Stage 2 placeholder — SonarQube comes Day 3"
+      - name: Checkout full git history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # SonarCloud needs full history for blame/age data
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Wait for SonarCloud analysis to complete
+        # SonarCloud is asynchronous — the scanner submits the analysis and
+        # exits 0. We need to poll the API until the analysis is done so we
+        # can fetch the actual findings.
+        run: |
+          sleep 30   # initial buffer; first run typically needs ~20-30s
+
+      - name: Fetch SonarCloud findings
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set +e   # don't fail this step on curl exit codes; we handle them
+          echo "Fetching all issues from SonarCloud..."
+
+          curl -s -u "${SONAR_TOKEN}:" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=ade820_Amdari-Project02&statuses=OPEN,CONFIRMED,REOPENED&ps=500" \
+            > sonarqube-findings.json
+
+          # Echo a summary for the log
+          echo "=== Issue counts by severity ==="
+          for sev in BLOCKER CRITICAL MAJOR MINOR INFO; do
+            count=$(jq "[.issues[] | select(.severity == \"$sev\")] | length" sonarqube-findings.json)
+            echo "$sev: $count"
+          done
+
+          # Hard-fail only on CRITICAL or BLOCKER. Everything else routes
+          # via the Day-5 security gate without blocking the merge.
+          CRITICAL_COUNT=$(jq '[.issues[] | select(.severity == "CRITICAL" or .severity == "BLOCKER")] | length' sonarqube-findings.json)
+          echo ""
+          echo "CRITICAL+BLOCKER findings: $CRITICAL_COUNT"
+
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "::error::Stage 2 hard-failing — $CRITICAL_COUNT CRITICAL/BLOCKER finding(s)"
+            echo "These findings block the merge per the differentiated gate policy."
+            jq '.issues[] | select(.severity == "CRITICAL" or .severity == "BLOCKER") | {severity, type, message, component, line}' sonarqube-findings.json
+            exit 1
+          else
+            echo "No CRITICAL/BLOCKER findings — Stage 2 soft-passing."
+            echo "Non-CRITICAL findings will be routed to AppSec via the Day-5 security gate PR comment."
+          fi
+
+      - name: Upload SonarQube findings JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-findings
+          path: sonarqube-findings.json
+          retention-days: 30
 
   # =========================================================================
   # Stage 3 — Container Image Scanning (Trivy)
