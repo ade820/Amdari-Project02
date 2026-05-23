@@ -227,3 +227,90 @@ The 14 MAJOR findings are not visible in this log (gate fails before the
 script dumps non-blocking detail), but they live in sonarqube-findings.json
 and on the SonarCloud dashboard. The Day-5 security gate will read them
 from the JSON artifact and surface them in the PR comment.
+
+## SonarCloud findings reconciled against VULNERABILITIES.md
+
+Filtered Issues view (Vulnerability category only): 11 issues total.
+
+### Mapped to my catalogued findings
+
+| Catalogued ID | SonarCloud detection                                   | Severity |
+|---------------|-------------------------------------------------------|----------|
+| AV-07         | services/auth-service/app.py:22 — hardcoded credential | Major    |
+
+### Detected by SonarCloud, NOT in VULNERABILITIES.md (good catches)
+
+| File                                     | Line | Issue                              | Sev   |
+|-----------------------------------------|------|-----------------------------------|-------|
+| services/auth-service/app.py            | 162  | Flask binds to 0.0.0.0            | Blocker |
+| services/frontend/app.py                | 185  | Flask binds to 0.0.0.0            | Blocker |
+| services/transaction-service/app.py     | 201  | Flask binds to 0.0.0.0            | Blocker |
+| services/transaction-service/app.py     | 19   | Hardcoded credential ("password") | Major |
+| services/*/Dockerfile (x3)              | 7    | pip install without --only-binary :all: | Major |
+| services/*/Dockerfile (x3)              | 7    | Dependencies without locked versions | Major |
+
+### NOT detected (gap in SonarCloud free tier ruleset)
+
+| Catalogued ID | Expected to catch | Why not caught |
+|---------------|-------------------|----------------|
+| AV-01 (SQLi login)    | SQL string concatenation in login() | SonarCloud free tier doesn't run full taint analysis rules (S3649/S2077) |
+| AV-02 (SQLi register) | SQL string concatenation in register() | Same — taint rules are commercial-tier |
+| AV-04 (no rate limit) | Brute-force protection missing | Not detectable by SAST; needs runtime context |
+| AV-05 (MD5 passwords) | Weak hash algorithm                | (Check if S2070 fired — may be in non-Vulnerability category) |
+| AV-06 (admin no authZ) | Missing role check                | Hard for SAST; needs semantic understanding of route policies |
+
+### Implications for Day-5 security gate
+
+The PR comment's AppSec section must include a "scanner coverage" note:
+"SonarCloud free tier does not include SQL injection taint analysis.
+Manual code review is required for parameterised-query verification on
+all DB-touching routes." Without this caveat, the AppSec team would
+assume the green-on-SQLi means the code is safe — which it isn't.
+
+This is itself a Day-5 deliverable insight: gate documentation must
+include scanner-coverage caveats, not just severity-routing rules.
+
+## Final AV detection reconciliation (verified in Code view)
+
+Inspected services/auth-service/app.py in SonarCloud's Code view directly.
+File metrics: Security 2, Reliability 0, Maintainability 1, Security Hotspot 4.
+
+| AV ID  | Detected? | Where                                      | Verdict |
+|--------|-----------|--------------------------------------------|---------|
+| AV-01  | No        | login() query lines 55-57 unmarked         | SonarCloud free tier lacks SQLi taint rules (S3649) |
+| AV-02  | No        | register() — same pattern                  | Same reason |
+| AV-03  | Indirect  | Enabled by AV-07 detection                 | Catching the secret catches the enabler |
+| AV-04  | No        | No code pattern exists for "missing rate limit" | Not SAST-detectable by ANY tool |
+| AV-05  | **Yes (Hotspot)** | hashlib.md5 line 32 marked   | Visible in Security Hotspots tab, not Issues tab |
+| AV-06  | No        | No code pattern for "missing role check"   | Not SAST-detectable |
+| AV-07  | Yes       | Line 15 (literal) + Line 22 (DB pwd literal) | Caught directly |
+| AV-08  | No        | Exception-to-client return unmarked        | SonarCloud free tier rule for this not active |
+
+Detection rate: 4 of 8 AV findings (AV-03 indirectly, AV-05 as Hotspot,
+AV-07 directly). The 4 misses are:
+- AV-01, AV-02: commercial-tier rule gap (taint analysis)
+- AV-04, AV-06: inherently not SAST-detectable
+- AV-08: free-tier rule coverage gap
+
+### Implications for Day-5 security gate policy
+
+The PR comment template must include a "scanner coverage" section
+listing what SonarCloud DOES NOT catch, so the AppSec team performs
+manual review of:
+1. All SQL query construction in auth-service routes (AV-01, AV-02)
+2. All authentication endpoints for rate limiting (AV-04)
+3. All admin routes for server-side role validation (AV-06)
+4. All exception handlers for information leakage (AV-08)
+
+Without this caveat, "Stage 2 green" would falsely imply "no SQLi
+present" to the AppSec reviewer.
+
+### Hotspots fetch coverage gap
+
+My current Fetch step queries /api/issues/search only. It does NOT
+query /api/hotspots/search. AV-05 is therefore NOT in the
+sonarqube-findings.json artifact and the Day-5 gate won't surface it.
+
+Day-5 TODO: extend the Fetch step to also pull Security Hotspots via
+the /api/hotspots/search endpoint so the gate's PR comment includes
+"X Hotspots needing review."
