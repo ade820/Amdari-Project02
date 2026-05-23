@@ -206,3 +206,24 @@ For a DevSecOps pipeline this is the right choice — CI-based analysis
 is deterministic and participates in our control flow (we wait, fetch,
 evaluate gate). Automatic Analysis is asynchronous and outside the
 pipeline's control.
+
+## Day 3 final — Stage 2 gate evidence
+
+Stage 2 final state with Automatic Analysis disabled and CI scan running:
+
+| Severity | Count | Gate behaviour |
+|----------|-------|----------------|
+| BLOCKER  | 3     | Hard-fail (DevSecOps gate) |
+| CRITICAL | 0     | Hard-fail (none triggered) |
+| MAJOR    | 14    | Soft-fail → route to AppSec (Day 5) |
+| MINOR    | 0     | Soft-fail → route to AppSec |
+| INFO     | 0     | Soft-fail → route to AppSec |
+
+Total: 17 issues. The 3 BLOCKERs are the same rule (Flask binds to 0.0.0.0)
+firing across auth-service line 162, frontend line 185, transaction-service
+line 201.
+
+The 14 MAJOR findings are not visible in this log (gate fails before the
+script dumps non-blocking detail), but they live in sonarqube-findings.json
+and on the SonarCloud dashboard. The Day-5 security gate will read them
+from the JSON artifact and surface them in the PR comment.
