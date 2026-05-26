@@ -167,3 +167,86 @@ OpenSSL CRITICALs in one shot.
 - "Summarise Trivy findings" step ran after all scans, printing counts
 - Three trivy-*.json artifacts uploaded for Day-5 gate consumption
 - Total run time: 55s (fast — Trivy DB cached after first run)
+
+## Stage 4 part 1 — Trivy K8s manifest scan results
+
+Local scan with --severity CRITICAL,HIGH:
+- 5 files scanned, 16 HIGH findings, 0 CRITICAL findings
+- Hard-fail gate will trigger on these 16 HIGHs
+
+Full scan (no severity filter) — 19 findings per service file at all
+severities. Mapping to VULNERABILITIES.md:
+
+| Catalogued | Trivy Rule(s)     | Severity | Captured? |
+|------------|------------------|----------|-----------|
+| CK-02      | KSV-0020/21/105  | LOW      | ✅ at LOW |
+| CK-04      | KSV-0017 + 0001  | HIGH+MED | ✅ hard-fails |
+| CK-05      | KSV-0011/15/16/18| LOW      | ✅ at LOW (routed) |
+| CK-06      | KSV-0013         | MEDIUM   | ✅ at MEDIUM (routed) |
+| CK-07      | (none)           | —        | ❌ Trivy doesn't check missing labels |
+| CK-09      | KSV-0109         | HIGH     | ✅ hard-fails |
+
+Bonus findings (not in VULNERABILITIES.md but caught):
+- KSV-0014 (readOnlyRootFilesystem) — HIGH, 5x
+- KSV-0118 (default security context) — HIGH, 6x
+- KSV-0125 (untrusted registry) — MEDIUM, 3x
+- KSV-0030/0104 (seccomp profile) — LOW/MEDIUM
+
+Coverage gap: CK-07 (missing labels) needs OPA Gatekeeper or
+Polaris — Trivy doesn't enforce label policy out of the box.
+This is a Day-7 (OPA constraints) deliverable, not a Stage 4
+deliverable. The Day-5 gate policy doc must note this.
+
+## Stage 4 part 2 — Checkov Terraform scan results
+
+Local scan against infra/terraform/:
+- 48 passed, 72 failed, 0 skipped
+
+All three catalogued IV-* findings detected:
+
+| Catalogued | Checkov rule(s)                              | Count |
+|------------|---------------------------------------------|-------|
+| IV-08      | CKV_AWS_274 (AdministratorAccess) + 9 more | 10    |
+| IV-09      | CKV_AWS_53/54/55/56 + 7 more                | 22    |
+| IV-10      | CKV_AWS_38/39 + 5 more                      | 7     |
+
+Bonus categories caught (not in VULNERABILITIES.md):
+
+| Category              | Count | Examples                                |
+|----------------------|-------|----------------------------------------|
+| RDS hardening        | 18    | No encryption (CKV_AWS_16), publicly accessible (CKV_AWS_17), no IAM auth, no deletion protection, no monitoring |
+| VPC security groups  | 8     | Wide-open SG on 22/80/3389 (CKV_AWS_24/260/25), no descriptions, default SG unrestricted |
+| VPC flow logging     | 1     | CKV2_AWS_11                            |
+| Misc S3              | 6     | KMS encryption, versioning, logging, lifecycle, replication, event notifications |
+
+Coverage observation: Checkov caught everything VULNERABILITIES.md
+catalogued PLUS ~33 additional findings. The 72 total give a far more
+complete picture than the index alone. Week-2 IaC remediation will
+need to triage:
+- The 10 IV-08 IAM findings (the catalogued ones)
+- The 22 IV-09 S3 findings (catalogued + KMS/versioning/logging)
+- The 7 IV-10 subnet/EKS findings (catalogued)
+- The 18 RDS findings (NEW — these would prevent RDS from being
+  production-grade without encryption and IAM auth)
+- The 8 VPC SG findings (NEW — at least the wide-open SSH/RDP SGs
+  should be tightened; that's a blast-radius issue)
+
+Of the 72 findings, all are HIGH-or-equivalent (Checkov doesn't use
+the LOW/MEDIUM/HIGH/CRITICAL bands the way Trivy does — its model
+treats every check as a pass/fail). Stage 4's Checkov step will
+hard-fail on the entire failure set.
+
+## Stage 4 gate behaviour design
+
+For consistency with the differentiated gate policy:
+
+| Tool   | Hard-fail trigger                          | Soft-fail finding type |
+|--------|-------------------------------------------|------------------------|
+| Trivy K8s | HIGH or CRITICAL                       | LOW/MEDIUM (route to PR comment) |
+| Checkov   | Any failure (no severity gradient)     | (none — Checkov is binary) |
+
+The combined Stage 4 job will hard-fail if either:
+- Trivy K8s reports any HIGH/CRITICAL, OR
+- Checkov reports any failure
+
+Both scanner JSON outputs upload as artifacts for the Day-5 gate.
