@@ -134,3 +134,36 @@ counts because the underlying image content changed.
 Day-7 (Week 2) container hardening will pin all service Dockerfiles
 to specific digests, not tags — which is also what CK-03 (unpinned
 image tags) calls out as a finding.
+
+## Stage 3 CI scan — full results
+
+| Service              | CRITICAL | HIGH |
+|---------------------|----------|------|
+| auth-service        | 3        | 30   |
+| transaction-service | 3        | 33   |
+| frontend            | 3        | 33   |
+
+The 3 CRITICALs in every service are identical — the OpenSSL CVE-2026-31789
+trio inherited from python:3.9-slim. Same root cause across all images
+because every Dockerfile reads `FROM python:3.9-slim`.
+
+The HIGH counts differ per service because each service installs different
+pip dependencies on top of the shared base:
+- auth-service: Flask, Werkzeug, psycopg2-binary, PyJWT
+- transaction-service: Flask, Werkzeug, psycopg2-binary, requests
+- frontend: Flask, Werkzeug, requests
+
+Note: the Werkzeug 2.2.2 pin from Day 1 (added to fix the url_quote
+import error) almost certainly contributes some of these HIGH findings.
+Werkzeug 2.2.2 was released October 2022 and has accumulated CVEs since.
+Day-7 remediation will upgrade Flask/Werkzeug as part of the base image
+refresh, which will close both the Werkzeug-specific HIGHs and the
+OpenSSL CRITICALs in one shot.
+
+## Stage 3 gate behaviour confirmed
+
+- Per-image hard-fail on first CRITICAL/HIGH (correct)
+- `if: always()` ensured all three services scanned despite earlier failures
+- "Summarise Trivy findings" step ran after all scans, printing counts
+- Three trivy-*.json artifacts uploaded for Day-5 gate consumption
+- Total run time: 55s (fast — Trivy DB cached after first run)
