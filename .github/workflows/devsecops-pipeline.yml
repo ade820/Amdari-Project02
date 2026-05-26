@@ -203,12 +203,67 @@ jobs:
   # Day 4 populates this.
   # =========================================================================
   iac-scan:
-    name: Stage 4 — Trivy K8s + Checkov (IaC)
+    name: Stage 4 — IaC Scan (Trivy K8s + Checkov)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "Stage 4 placeholder — IaC scans come Day 4"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Trivy K8s manifest scan ---
+      - name: Trivy K8s misconfiguration scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: infra/kubernetes/
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: json
+          output: trivy-k8s.json
+          ignore-unfixed: false
+
+      # --- Checkov Terraform scan ---
+      # Run even if Trivy K8s hard-failed — we want both reports
+      - name: Checkov Terraform IaC scan
+        if: always()
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra/terraform/
+          framework: terraform
+          output_format: json
+          output_file_path: checkov-output
+          soft_fail: false   # hard-fail on any Checkov failure
+
+      - name: Summarise IaC findings
+        if: always()
+        run: |
+          echo "=== Stage 4 — IaC findings summary ==="
+          if [ -f trivy-k8s.json ]; then
+            HIGH=$(jq '[.Results[]?.Misconfigurations[]? | select(.Severity == "HIGH")] | length' trivy-k8s.json 2>/dev/null || echo 0)
+            CRIT=$(jq '[.Results[]?.Misconfigurations[]? | select(.Severity == "CRITICAL")] | length' trivy-k8s.json 2>/dev/null || echo 0)
+            echo "Trivy K8s — CRITICAL: $CRIT, HIGH: $HIGH"
+          fi
+
+          if [ -d checkov-output ]; then
+            FAILED=$(jq '.results.failed_checks | length' checkov-output/results_json.json 2>/dev/null || echo 0)
+            PASSED=$(jq '.results.passed_checks | length' checkov-output/results_json.json 2>/dev/null || echo 0)
+            echo "Checkov — Passed: $PASSED, Failed: $FAILED"
+          fi
+
+      - name: Upload Trivy K8s report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-k8s-report
+          path: trivy-k8s.json
+          retention-days: 30
+
+      - name: Upload Checkov report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: checkov-output/
+          retention-days: 30
 
   # =========================================================================
   # Stage 5 — Security Gate (Aggregation + PR comment)
