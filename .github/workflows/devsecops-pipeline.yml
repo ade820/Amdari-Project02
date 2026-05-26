@@ -143,7 +143,7 @@ jobs:
           docker build -t secureflow/frontend:ci ./services/frontend
 
       - name: Trivy scan — auth-service
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: secureflow/auth-service:ci
           severity: CRITICAL,HIGH
@@ -154,7 +154,7 @@ jobs:
 
       - name: Trivy scan — transaction-service
         if: always()   # continue even if auth-service hard-failed; we want all 3 reports
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: secureflow/transaction-service:ci
           severity: CRITICAL,HIGH
@@ -165,7 +165,7 @@ jobs:
 
       - name: Trivy scan — frontend
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: secureflow/frontend:ci
           severity: CRITICAL,HIGH
