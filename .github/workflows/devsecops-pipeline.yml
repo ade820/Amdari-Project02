@@ -130,9 +130,72 @@ jobs:
     name: Stage 3 — Trivy (image CVEs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "Stage 3 placeholder — Trivy image comes Day 4"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # We scan each service's BUILT image — not just the base image — because
+      # the Dockerfile may add vulnerable dependencies on top of the base.
+      # Build all three service images first.
+      - name: Build service images
+        run: |
+          docker build -t secureflow/auth-service:ci ./services/auth-service
+          docker build -t secureflow/transaction-service:ci ./services/transaction-service
+          docker build -t secureflow/frontend:ci ./services/frontend
+
+      - name: Trivy scan — auth-service
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: secureflow/auth-service:ci
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: json
+          output: trivy-auth-service.json
+          ignore-unfixed: false
+
+      - name: Trivy scan — transaction-service
+        if: always()   # continue even if auth-service hard-failed; we want all 3 reports
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: secureflow/transaction-service:ci
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: json
+          output: trivy-transaction-service.json
+          ignore-unfixed: false
+
+      - name: Trivy scan — frontend
+        if: always()
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: secureflow/frontend:ci
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: json
+          output: trivy-frontend.json
+          ignore-unfixed: false
+
+      - name: Summarise Trivy findings
+        if: always()
+        run: |
+          echo "=== Trivy CRITICAL/HIGH summary by service ==="
+          for svc in auth-service transaction-service frontend; do
+            file="trivy-$svc.json"
+            if [ -f "$file" ]; then
+              crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$file")
+              high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$file")
+              echo "$svc — CRITICAL: $crit, HIGH: $high"
+            else
+              echo "$svc — (no report generated)"
+            fi
+          done
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: trivy-*.json
+          retention-days: 30
 
   # =========================================================================
   # Stage 4 — IaC Scanning (Trivy K8s + Checkov)
