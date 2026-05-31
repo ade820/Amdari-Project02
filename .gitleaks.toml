@@ -82,4 +82,8 @@ paths = [
     '''\.gitleaks\.toml''',
     '''README\.md''',
     '''VULNERABILITIES\.md''',
+    # Day-6 K8s Secret manifest. Rotated values, not the leaked originals.
+    # TEMPORARY: Day-7 hardening folds the DB password into Vault injection,
+    # which deletes this file and makes this allowlist entry obsolete.
+    '''infra/kubernetes/base/db-credentials\.yaml''',
 ]
