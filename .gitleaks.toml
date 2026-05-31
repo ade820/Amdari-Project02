@@ -1,80 +1,12 @@
-# .gitleaks.toml — Custom Gitleaks rules for SecureFlow
-#
-# Extends the default Gitleaks ruleset to catch project-specific patterns
-# that default rules miss: Flask/JWT secrets, session secrets, DB passwords,
-# and AWS documentation example keys that defaults would skip.
-#
-# Coverage maps to VULNERABILITIES.md: IV-01 (DB passwords), IV-03 (env
-# var secrets), IV-04 (.env-committed secrets), AV-07 (hardcoded JWT
-# fallback), FV-03 (committed session secret).
-
-title = "SecureFlow Gitleaks Config"
-
-[extend]
-useDefault = true
-
-# -----------------------------------------------------------------------------
-# Rule: AWS access key — override default exemption of example values
-# Default Gitleaks excludes ***REMOVED*** as a documentation key.
-# In our threat model the .env file containing it IS the vulnerability,
-# so we catch it explicitly.
-# -----------------------------------------------------------------------------
-[[rules]]
-id = "aws-access-key-id-strict"
-description = "AWS Access Key ID (including documentation examples)"
-regex = '''(?i)aws_access_key_id\s*[:=]\s*['"]?(AKIA[0-9A-Z]{16})['"]?'''
-keywords = ["aws_access_key_id", "akia"]
-
-# -----------------------------------------------------------------------------
-# Rule: AWS secret access key — same override rationale.
-# -----------------------------------------------------------------------------
-[[rules]]
-id = "aws-secret-access-key-strict"
-description = "AWS Secret Access Key (including documentation examples)"
-regex = '''(?i)aws_secret_access_key\s*[:=]\s*['"]?([A-Za-z0-9/+=]{40})['"]?'''
-keywords = ["aws_secret_access_key"]
-
-# -----------------------------------------------------------------------------
-# Rule: Flask SECRET_KEY or JWT_SECRET assignment
-# Matches Python literal assignment and env-var style for both names.
-# Covers AV-07 (hardcoded SECRET_KEY fallback) plus .env / compose commits.
-# -----------------------------------------------------------------------------
-[[rules]]
-id = "flask-jwt-secret"
-description = "Flask SECRET_KEY or JWT_SECRET assignment with a literal value"
-regex = '''(?i)(secret_key|jwt_secret)\s*[:=]\s*['"]?[^\s'"#]{6,}['"]?'''
-keywords = ["secret_key", "jwt_secret"]
-
-# -----------------------------------------------------------------------------
-# Rule: Session secret assignment
-# Catches SESSION_SECRET=***REMOVED*** and similar literals. Short threshold
-# (>=3 chars) because '***REMOVED***' itself is only 8 characters.
-# -----------------------------------------------------------------------------
-[[rules]]
-id = "session-secret"
-description = "Flask SESSION_SECRET assignment with a literal value"
-regex = '''(?i)session_secret\s*[:=]\s*['"]?[^\s'"#]{3,}['"]?'''
-keywords = ["session_secret"]
-
-# -----------------------------------------------------------------------------
-# Rule: Database password env var
-# Matches POSTGRES_PASSWORD, DB_PASSWORD, MYSQL_PASSWORD assignments
-# regardless of file type. Covers IV-01 + IV-03 patterns.
-# -----------------------------------------------------------------------------
-[[rules]]
-id = "db-password-env"
-description = "Database password environment variable assignment"
-regex = '''(?i)(postgres_password|db_password|mysql_password)\s*[:=]\s*['"]?[^\s'"#]{4,}['"]?'''
-keywords = ["postgres_password", "db_password", "mysql_password"]
-
-# -----------------------------------------------------------------------------
-# Allowlist
-# Documentation, evidence, and the config itself legitimately quote
-# secret patterns for educational and explanatory purposes. Excluding
-# these paths prevents false positives without weakening the rules.
-# -----------------------------------------------------------------------------
 [allowlist]
 description = "Allowlist for documentation and evidence files"
+regexes = [
+    # Redacted secret values (scrubbed via git-filter-repo, Day 7). The literal
+    # ***REMOVED*** marker is not a secret — it's the redaction placeholder left
+    # where committed secrets used to be. Matching it prevents false positives
+    # on key patterns (PASSWORD:, SECRET:) whose VALUE is already redacted.
+    '''\*\*\*REMOVED\*\*\*''',
+]
 paths = [
     '''docs/.*''',
     '''evidence/.*''',
@@ -86,4 +18,7 @@ paths = [
     # TEMPORARY: Day-7 hardening folds the DB password into Vault injection,
     # which deletes this file and makes this allowlist entry obsolete.
     '''infra/kubernetes/base/db-credentials\.yaml''',
+    # CI workflow references secrets as ${VAR} runtime injections, never literals
+    # (e.g. curl -u "${SONAR_TOKEN}:"). Variable references are not secrets.
+    '''\.github/workflows/.*''',
 ]

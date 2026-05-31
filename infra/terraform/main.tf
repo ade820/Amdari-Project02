@@ -32,6 +32,11 @@ variable "environment" {
   type    = string
   default = "dev"
 }
+variable "db_password" {
+  description = "RDS master password — supplied via TF_VAR_db_password, never hardcoded (IV-01 remediation)"
+  type        = string
+  sensitive   = true
+}
 
 module "vpc" {
   source      = "./modules/vpc"
@@ -63,5 +68,5 @@ module "rds" {
   environment       = var.environment
   vpc_id            = module.vpc.vpc_id
   public_subnet_ids = module.vpc.public_subnet_ids
-  db_password       = "postgres" # IV-01 — hardcoded DB password reused from docker-compose.
+  db_password       = var.db_password # IV-01 remediated: sourced from variable, not hardcoded
 }
