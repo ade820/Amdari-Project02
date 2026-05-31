@@ -46,3 +46,6 @@ nothing, it would be theatre. The differentiated approach means:
 - The AppSec-owned application problems (SQLi, IDOR, XSS) are detected, logged,
   and handed off via a structured PR comment — because fixing application logic
   is the AppSec/development team's responsibility, not the pipeline engineer's.
+
+## Gate PR test — 2026-05-31
+Trivial change to open a PR and exercise the Stage 5 comment-posting path.
