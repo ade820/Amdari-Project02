@@ -4,11 +4,9 @@ metadata:
   name: secureflow-config
   namespace: secureflow
 data:
-  # CK-09 — secrets in plaintext ConfigMap.
-  # Remediation in Step 14: migrate to Vault Agent Injector.
-  JWT_SECRET: "***REMOVED***"
-  SESSION_SECRET: "***REMOVED***"
-  AUTH_DB_PASSWORD: "***REMOVED***"
-  TX_DB_PASSWORD: "***REMOVED***"
+  # CK-09 remediated (Day 6): secrets removed from ConfigMap.
+  # JWT_SECRET, SESSION_SECRET → now injected from Vault at runtime (/vault/secrets/config)
+  # AUTH_DB_PASSWORD, TX_DB_PASSWORD → now in the db-credentials Kubernetes Secret
+  # Only non-secret service-discovery config remains below.
   AUTH_SERVICE_URL: "http://auth-service:5001"
   TRANSACTION_SERVICE_URL: "http://transaction-service:5002"

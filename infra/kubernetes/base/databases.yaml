@@ -23,8 +23,8 @@ spec:
               value: authuser
             - name: POSTGRES_PASSWORD
               valueFrom:
-                configMapKeyRef:
-                  name: secureflow-config
+                secretKeyRef:
+                  name: db-credentials
                   key: AUTH_DB_PASSWORD
           ports:
             - containerPort: 5432
@@ -66,8 +66,8 @@ spec:
               value: txuser
             - name: POSTGRES_PASSWORD
               valueFrom:
-                configMapKeyRef:
-                  name: secureflow-config
+                secretKeyRef:
+                  name: db-credentials
                   key: TX_DB_PASSWORD
           ports:
             - containerPort: 5432
