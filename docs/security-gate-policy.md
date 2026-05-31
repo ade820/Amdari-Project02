@@ -134,3 +134,21 @@ classes. AppSec manual review is mandatory regardless of gate status.
 - Add Stage 7 (DAST) findings to the gate aggregation.
 - Add Day-7 OPA Gatekeeper policy results to the gate aggregation.
 - Reachability analysis to suppress non-exploitable CVEs (reduce HIGH noise).
+
+## Stage 3 (Trivy image) — CRITICAL-blocking, HIGH-reported (Day 7 revision)
+
+Stage 3 hard-fails the build on CRITICAL CVEs only. HIGH CVEs are scanned and
+reported into the `trivy-image-reports` artifact (and surfaced in the gate
+comment), but do not block the merge. This aligns with the engagement success
+metric, which requires "zero CRITICAL CVEs" while HIGH is "documented and
+trending downward" — a HIGH-blocking gate would be incompatible with that
+metric, since it would demand zero HIGH rather than a downward trend.
+
+Accepted-risk CVEs with no available upstream fix are listed in `.trivyignore`
+at the repo root, each with a documented justification and recheck date. As of
+Day 7 this covers two perl-base CRITICALs (CVE-2026-42496, CVE-2026-8376) on
+the Debian 13 base image, for which Debian has not yet shipped a patched
+package. These are removed from the ignore file and the image rebuilt as soon
+as a fix is available. This is distinct from suppressing upgrade-fixable CVEs:
+the base image was already upgraded (python:3.9-slim to 3.12-slim), and only
+the genuinely-unpatchable residue is accepted.

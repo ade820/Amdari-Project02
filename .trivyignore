@@ -1,0 +1,22 @@
+# =============================================================================
+# Trivy ignore file — ACCEPTED RISK (no fix available)
+# =============================================================================
+# These CVEs are in perl-base on the python:3.12-slim (Debian 13) base image.
+# As of the recheck date below, Debian has NOT released a patched perl-base
+# package — Trivy reports an empty "Fixed Version", confirming no upstream fix
+# exists yet. The upstream fix (Archive::Tar 3.08+) is not yet in any Debian
+# package we can install.
+#
+# This is NOT a case of ignoring an upgrade-fixable CVE: the base image was
+# already upgraded 3.9-slim -> 3.12-slim (Day 7), which eliminated the bulk of
+# CVEs. These two are the residual, genuinely-unpatchable CRITICALs.
+#
+# ACTION: On the recheck date, remove these entries and rebuild. If Debian has
+# shipped a fixed perl-base, the CVEs resolve with no code change.
+#
+# Recheck date: 2026-06-14
+# Accepted by: Adeel (DevSecOps) — Day 7 container remediation
+# Tracking: docs/day7-notes.md (accepted-risk register)
+# =============================================================================
+CVE-2026-42496
+CVE-2026-8376

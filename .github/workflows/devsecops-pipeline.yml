@@ -142,36 +142,73 @@ jobs:
           docker build -t secureflow/transaction-service:ci ./services/transaction-service
           docker build -t secureflow/frontend:ci ./services/frontend
 
-      - name: Trivy scan — auth-service
+      # Blocking gate: hard-fail ONLY on CRITICAL (honours .trivyignore for
+      # accepted-risk CVEs). HIGH is reported separately, non-blocking, per the
+      # documented gate policy and the engagement success metric
+      # ("zero CRITICAL; HIGH documented and trending downward").
+      - name: Trivy gate — auth-service (CRITICAL, blocking)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: secureflow/auth-service:ci
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          trivyignores: .trivyignore
+          ignore-unfixed: false
+      - name: Trivy report — auth-service (CRITICAL+HIGH, non-blocking)
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: secureflow/auth-service:ci
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           format: json
           output: trivy-auth-service.json
+          trivyignores: .trivyignore
           ignore-unfixed: false
 
-      - name: Trivy scan — transaction-service
-        if: always()   # continue even if auth-service hard-failed; we want all 3 reports
+      - name: Trivy gate — transaction-service (CRITICAL, blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: secureflow/transaction-service:ci
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          trivyignores: .trivyignore
+          ignore-unfixed: false
+      - name: Trivy report — transaction-service (CRITICAL+HIGH, non-blocking)
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: secureflow/transaction-service:ci
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           format: json
           output: trivy-transaction-service.json
+          trivyignores: .trivyignore
           ignore-unfixed: false
 
-      - name: Trivy scan — frontend
+      - name: Trivy gate — frontend (CRITICAL, blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: secureflow/frontend:ci
+          severity: CRITICAL
+          exit-code: '1'
+          format: table
+          trivyignores: .trivyignore
+          ignore-unfixed: false
+      - name: Trivy report — frontend (CRITICAL+HIGH, non-blocking)
         if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: secureflow/frontend:ci
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           format: json
           output: trivy-frontend.json
+          trivyignores: .trivyignore
           ignore-unfixed: false
 
       - name: Summarise Trivy findings
