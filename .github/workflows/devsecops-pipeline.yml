@@ -275,11 +275,188 @@ jobs:
     name: Stage 5 — Security Gate
     runs-on: ubuntu-latest
     needs: [secret-scan, sast-scan, image-scan, iac-scan]
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "Stage 5 placeholder — security gate comes Day 5"
+      - name: Checkout
+        uses: actions/checkout@v4
 
+      - name: Download all scanner artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: gate-inputs
+        continue-on-error: true
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          find gate-inputs -type f 2>/dev/null | sort || echo "(none)"
+
+      - name: Evaluate gate and build report
+        id: gate
+        run: |
+          set +e
+          mkdir -p gate-inputs
+
+          GITLEAKS_FILE=$(find gate-inputs -name 'gitleaks-report.json' | head -1)
+          if [ -n "$GITLEAKS_FILE" ]; then
+            GITLEAKS_COUNT=$(jq 'length' "$GITLEAKS_FILE" 2>/dev/null || echo 0)
+          else
+            GITLEAKS_COUNT=0
+          fi
+
+          SONAR_FILE=$(find gate-inputs -name 'sonarqube-findings.json' | head -1)
+          if [ -n "$SONAR_FILE" ]; then
+            SONAR_BLOCKER=$(jq '[.issues[]? | select(.severity=="BLOCKER" or .severity=="CRITICAL")] | length' "$SONAR_FILE" 2>/dev/null || echo 0)
+            SONAR_MAJOR=$(jq '[.issues[]? | select(.severity=="MAJOR")] | length' "$SONAR_FILE" 2>/dev/null || echo 0)
+            SONAR_OTHER=$(jq '[.issues[]? | select(.severity=="MINOR" or .severity=="INFO")] | length' "$SONAR_FILE" 2>/dev/null || echo 0)
+          else
+            SONAR_BLOCKER=0; SONAR_MAJOR=0; SONAR_OTHER=0
+          fi
+
+          TRIVY_IMG_CRIT=0; TRIVY_IMG_HIGH=0
+          for f in $(find gate-inputs -name 'trivy-*.json' ! -name 'trivy-k8s.json'); do
+            c=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$f" 2>/dev/null || echo 0)
+            h=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$f" 2>/dev/null || echo 0)
+            TRIVY_IMG_CRIT=$((TRIVY_IMG_CRIT + c))
+            TRIVY_IMG_HIGH=$((TRIVY_IMG_HIGH + h))
+          done
+
+          K8S_FILE=$(find gate-inputs -name 'trivy-k8s.json' | head -1)
+          if [ -n "$K8S_FILE" ]; then
+            K8S_CRIT=$(jq '[.Results[]?.Misconfigurations[]? | select(.Severity=="CRITICAL")] | length' "$K8S_FILE" 2>/dev/null || echo 0)
+            K8S_HIGH=$(jq '[.Results[]?.Misconfigurations[]? | select(.Severity=="HIGH")] | length' "$K8S_FILE" 2>/dev/null || echo 0)
+          else
+            K8S_CRIT=0; K8S_HIGH=0
+          fi
+
+          CKV_FILE=$(find gate-inputs -name 'results_json.json' | head -1)
+          if [ -n "$CKV_FILE" ]; then
+            CKV_FAILED=$(jq '.results.failed_checks | length' "$CKV_FILE" 2>/dev/null || echo 0)
+            CKV_PASSED=$(jq '.results.passed_checks | length' "$CKV_FILE" 2>/dev/null || echo 0)
+          else
+            CKV_FAILED=0; CKV_PASSED=0
+          fi
+
+          DEVSECOPS_BLOCK=0
+          [ "$GITLEAKS_COUNT" -gt 0 ] && DEVSECOPS_BLOCK=1
+          [ "$TRIVY_IMG_CRIT" -gt 0 ] && DEVSECOPS_BLOCK=1
+          [ "$TRIVY_IMG_HIGH" -gt 0 ] && DEVSECOPS_BLOCK=1
+          [ "$K8S_CRIT" -gt 0 ] && DEVSECOPS_BLOCK=1
+          [ "$K8S_HIGH" -gt 0 ] && DEVSECOPS_BLOCK=1
+          [ "$CKV_FAILED" -gt 0 ] && DEVSECOPS_BLOCK=1
+          APPSEC_BLOCK=0
+          [ "$SONAR_BLOCKER" -gt 0 ] && APPSEC_BLOCK=1
+
+          VERDICT="PASS"
+          if [ "$DEVSECOPS_BLOCK" -eq 1 ] || [ "$APPSEC_BLOCK" -eq 1 ]; then
+            VERDICT="BLOCK"
+          fi
+
+          {
+            echo "## SecureFlow Security Gate — $VERDICT"
+            echo ""
+            if [ "$VERDICT" = "BLOCK" ]; then
+              echo "**This change is blocked.** One or more hard-fail conditions were met."
+            else
+              echo "**No hard-fail conditions met.** Advisory findings are routed to AppSec below."
+            fi
+            echo ""
+            echo "### DevSecOps-owned (blocking)"
+            echo ""
+            echo "| Scanner | Finding | Count | Gate |"
+            echo "|---------|---------|-------|------|"
+            echo "| Gitleaks | Committed secrets | $GITLEAKS_COUNT | $([ "$GITLEAKS_COUNT" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| Trivy image | CRITICAL CVEs | $TRIVY_IMG_CRIT | $([ "$TRIVY_IMG_CRIT" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| Trivy image | HIGH CVEs | $TRIVY_IMG_HIGH | $([ "$TRIVY_IMG_HIGH" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| Trivy K8s | CRITICAL misconfig | $K8S_CRIT | $([ "$K8S_CRIT" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| Trivy K8s | HIGH misconfig | $K8S_HIGH | $([ "$K8S_HIGH" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| Checkov | Failed IaC checks | $CKV_FAILED | $([ "$CKV_FAILED" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo ""
+            echo "### AppSec-owned (routed, non-blocking unless BLOCKER/CRITICAL)"
+            echo ""
+            echo "| Scanner | Severity | Count | Gate |"
+            echo "|---------|----------|-------|------|"
+            echo "| SonarCloud | BLOCKER/CRITICAL | $SONAR_BLOCKER | $([ "$SONAR_BLOCKER" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| SonarCloud | MAJOR | $SONAR_MAJOR | routed |"
+            echo "| SonarCloud | MINOR/INFO | $SONAR_OTHER | routed |"
+            echo ""
+            echo "<details><summary>AppSec intake and scanner-coverage caveats</summary>"
+            echo ""
+            echo "SonarCloud free tier does NOT detect SQLi taint flows (AV-01, AV-02),"
+            echo "missing rate limiting (AV-04), missing authorization (AV-06), or error-leak"
+            echo "(AV-08). A green SAST result does not imply these are absent. Manual AppSec"
+            echo "review of all DB-touching, auth, and admin routes is mandatory."
+            echo ""
+            echo "See docs/security-gate-policy.md section 5 for the full intake template and SLAs."
+            echo "</details>"
+            echo ""
+            echo "_To override a hard-fail: a maintainer comments \`/security-exception <reason>\` on this PR._"
+          } > gate-report.md
+
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          echo "Gate verdict: $VERDICT"
+          echo "DevSecOps block=$DEVSECOPS_BLOCK  AppSec block=$APPSEC_BLOCK"
+          cat gate-report.md
+
+      - name: Check for security exception
+        id: exception
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            const hasException = comments.some(c =>
+              c.body && c.body.trim().startsWith('/security-exception'));
+            core.setOutput('granted', hasException ? 'true' : 'false');
+            core.info(hasException ? 'Security exception found.' : 'No exception comment.');
+
+      - name: Post gate report as PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('gate-report.md', 'utf8');
+            const marker = '<!-- secureflow-security-gate -->';
+            const fullBody = marker + '\n' + body;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body: fullBody });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number, body: fullBody });
+            }
+
+      - name: Write gate report to job summary
+        if: github.event_name != 'pull_request'
+        run: cat gate-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce gate verdict
+        run: |
+          VERDICT="${{ steps.gate.outputs.verdict }}"
+          EXCEPTION="${{ steps.exception.outputs.granted }}"
+          echo "Verdict: $VERDICT | Exception granted: ${EXCEPTION:-n/a}"
+          if [ "$VERDICT" = "BLOCK" ] && [ "$EXCEPTION" != "true" ]; then
+            echo "::error::Security gate BLOCKED this change. See the gate report."
+            exit 1
+          fi
+          echo "Security gate passed (or exception granted)."
   # =========================================================================
   # Stage 6 — Supply Chain (Cosign signing + SPDX SBOM attestation)
   # Owner: DevSecOps. Runs only after the gate passes.
