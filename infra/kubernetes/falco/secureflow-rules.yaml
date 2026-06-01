@@ -1,0 +1,68 @@
+# =============================================================================
+# Falco custom rules for SecureFlow — runtime threat detection
+# Four rules matching the Day 8 trigger scenarios.
+# =============================================================================
+customRules:
+  secureflow-rules.yaml: |-
+    # ---- Rule 1: Shell spawned in a SecureFlow service container --------------
+    - rule: Shell Spawned in SecureFlow Container
+      desc: Detects a shell process starting inside a secureflow service container
+            (e.g. attacker exec after exploiting an app vuln)
+      condition: >
+        spawned_process
+        and container
+        and k8s.ns.name = "secureflow"
+        and proc.name in (sh, bash, ash, dash, zsh)
+      output: >
+        Shell spawned in SecureFlow container
+        (user=%user.name container=%container.name pod=%k8s.pod.name
+        proc=%proc.cmdline parent=%proc.pname)
+      priority: WARNING
+      tags: [shell, secureflow, mitre_execution]
+
+    # ---- Rule 2: Sensitive file read (e.g. /etc/shadow) -----------------------
+    - rule: Sensitive File Read in SecureFlow Container
+      desc: Detects reads of sensitive credential files inside secureflow containers
+      condition: >
+        open_read
+        and container
+        and k8s.ns.name = "secureflow"
+        and fd.name in (/etc/shadow, /etc/passwd, /etc/sudoers)
+      output: >
+        Sensitive file opened for reading in SecureFlow container
+        (file=%fd.name user=%user.name container=%container.name
+        pod=%k8s.pod.name proc=%proc.cmdline)
+      priority: WARNING
+      tags: [filesystem, secureflow, mitre_credential_access]
+
+    # ---- Rule 3: Unexpected outbound connection -------------------------------
+    - rule: Unexpected Outbound Connection from SecureFlow
+      desc: Detects an outbound network connection from a secureflow container to
+            an address outside private/cluster ranges (possible C2 / exfil)
+      condition: >
+        outbound
+        and container
+        and k8s.ns.name = "secureflow"
+        and not fd.snet in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")
+      output: >
+        Unexpected outbound connection from SecureFlow container
+        (connection=%fd.name dest=%fd.sip:%fd.sport container=%container.name
+        pod=%k8s.pod.name proc=%proc.cmdline)
+      priority: NOTICE
+      tags: [network, secureflow, mitre_exfiltration]
+
+    # ---- Rule 4: Package manager executed at runtime --------------------------
+    - rule: Package Manager Run in SecureFlow Container
+      desc: Detects apt/apk/pip/yum running inside a secureflow container at
+            runtime (images should be immutable post-build)
+      condition: >
+        spawned_process
+        and container
+        and k8s.ns.name = "secureflow"
+        and proc.name in (apt, apt-get, apk, yum, dnf, pip, pip3)
+      output: >
+        Package manager executed at runtime in SecureFlow container
+        (command=%proc.cmdline container=%container.name pod=%k8s.pod.name
+        user=%user.name)
+      priority: WARNING
+      tags: [process, secureflow, mitre_persistence]
