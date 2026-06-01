@@ -1,0 +1,40 @@
+# kube-prometheus-stack values - tuned for local Docker Desktop cluster.
+# Modest retention + resource caps to avoid OOM alongside Vault/Gatekeeper/Falco.
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+alertmanager:
+  enabled: false
+grafana:
+  adminPassword: admin
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: NodePort
+    nodePort: 30300
+nodeExporter:
+  enabled: false
+kubeStateMetrics:
+  enabled: true
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
