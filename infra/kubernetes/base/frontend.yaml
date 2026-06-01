@@ -34,10 +34,13 @@ spec:
           ports:
             - containerPort: 5000
           securityContext:
-            privileged: true                # CK-04 (Day 7)
-            allowPrivilegeEscalation: true  # CK-04 (Day 7)
-            runAsUser: 0                    # CK-02 (Day 7)
-          # CK-05 — no resources. (Day 7)
+            privileged: false
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
 ---
 apiVersion: v1
 kind: Service

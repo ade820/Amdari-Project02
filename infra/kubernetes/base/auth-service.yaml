@@ -45,10 +45,13 @@ spec:
               value: authuser
           # CK-04 — privileged container. (Day 7 hardening)
           securityContext:
-            privileged: true
-            allowPrivilegeEscalation: true
-            runAsUser: 0
-          # CK-05 — no resources. (Day 7 hardening)
+            privileged: false
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
 
 ---
 apiVersion: v1
