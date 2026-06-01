@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: frontend
   namespace: secureflow
+  labels:
+    app: frontend
+    team: platform
 spec:
   replicas: 1
   selector:
@@ -12,8 +15,9 @@ spec:
     metadata:
       labels:
         svc: frontend
+        app: frontend
+        team: platform
       annotations:
-        # Vault Agent Injector — secrets as a file, NOT env vars (CK-09 remediation)
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "frontend"
         vault.hashicorp.com/agent-inject-secret-config: "secureflow/data/frontend"
@@ -26,7 +30,7 @@ spec:
       serviceAccountName: frontend
       containers:
         - name: frontend
-          image: secureflow/frontend:latest   # CK-06 (Day 7)
+          image: secureflow/frontend:latest
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
@@ -41,6 +45,13 @@ spec:
             capabilities:
               drop:
                 - ALL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service

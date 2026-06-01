@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: auth-db
   namespace: secureflow
+  labels:
+    app: auth-db
+    team: platform
 spec:
   replicas: 1
   selector:
@@ -12,6 +15,8 @@ spec:
     metadata:
       labels:
         svc: auth-db
+        app: auth-db
+        team: platform
     spec:
       containers:
         - name: postgres
@@ -28,6 +33,13 @@ spec:
                   key: AUTH_DB_PASSWORD
           ports:
             - containerPort: 5432
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
 ---
 apiVersion: v1
 kind: Service
@@ -46,6 +58,9 @@ kind: Deployment
 metadata:
   name: transaction-db
   namespace: secureflow
+  labels:
+    app: transaction-db
+    team: platform
 spec:
   replicas: 1
   selector:
@@ -55,6 +70,8 @@ spec:
     metadata:
       labels:
         svc: transaction-db
+        app: transaction-db
+        team: platform
     spec:
       containers:
         - name: postgres
@@ -71,6 +88,13 @@ spec:
                   key: TX_DB_PASSWORD
           ports:
             - containerPort: 5432
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
 ---
 apiVersion: v1
 kind: Service

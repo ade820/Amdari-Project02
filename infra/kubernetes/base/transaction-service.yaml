@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: transaction-service
   namespace: secureflow
+  labels:
+    app: transaction-service
+    team: platform
 spec:
   replicas: 1
   selector:
@@ -12,8 +15,9 @@ spec:
     metadata:
       labels:
         svc: transaction-service
+        app: transaction-service
+        team: platform
       annotations:
-        # Vault Agent Injector — secrets as a file, NOT env vars (CK-09 remediation)
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "transaction-service"
         vault.hashicorp.com/agent-inject-secret-config: "secureflow/data/transaction-service"
@@ -26,7 +30,7 @@ spec:
       serviceAccountName: transaction-service
       containers:
         - name: transaction-service
-          image: secureflow/transaction-service:latest   # CK-06 (Day 7)
+          image: secureflow/transaction-service:latest
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
@@ -48,6 +52,13 @@ spec:
             capabilities:
               drop:
                 - ALL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service

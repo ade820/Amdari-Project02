@@ -1,0 +1,285 @@
+# =============================================================================
+# CK-08 remediation — NetworkPolicy default-deny with explicit allowlists
+# =============================================================================
+# NOTE: Docker Desktop's built-in Kubernetes uses a CNI that does NOT enforce
+# NetworkPolicy. These policies apply cleanly and are correct; enforcement
+# requires a policy-aware CNI (Calico/Cilium) as on real EKS. Documented as an
+# environment limitation in docs/day8-notes.md.
+# =============================================================================
+
+# ---- 1. Default-deny all ingress and egress in the namespace --------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector: {}            # selects ALL pods in the namespace
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# ---- 2. Allow DNS egress for all pods (CoreDNS in kube-system) -------------
+# Without this, no pod can resolve service names — breaks everything.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ---- 3. Allow all pods egress to Vault (default namespace, port 8200) ------
+# The Vault Agent Injector sidecar must reach Vault to fetch secrets at startup.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vault-egress
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8200
+---
+# ---- 4. frontend -> auth-service (5001) and transaction-service (5002) ------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-egress-to-services
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: auth-service
+      ports:
+        - protocol: TCP
+          port: 5001
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: transaction-service
+      ports:
+        - protocol: TCP
+          port: 5002
+---
+# ---- 5. auth-service / transaction-service accept ingress from frontend ----
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-service-ingress-from-frontend
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: auth-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: frontend
+      ports:
+        - protocol: TCP
+          port: 5001
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: transaction-service-ingress-from-frontend
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: frontend
+      ports:
+        - protocol: TCP
+          port: 5002
+---
+# ---- 6. transaction-service -> auth-service (token validation) -------------
+# transaction-service calls auth-service to validate JWTs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: transaction-egress-to-auth
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: auth-service
+      ports:
+        - protocol: TCP
+          port: 5001
+---
+# ---- 7. Each service -> its own database (5432) ----------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-service-egress-to-db
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: auth-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: auth-db
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: transaction-service-egress-to-db
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: transaction-db
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# ---- 8. Databases accept ingress only from their own service --------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-db-ingress-from-auth-service
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: auth-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: auth-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: transaction-db-ingress-from-transaction-service
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: transaction-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# ---- 9. Allow ingress to frontend from outside (NodePort) ------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-ingress-external
+  namespace: secureflow
+  labels:
+    app: secureflow
+    team: platform
+spec:
+  podSelector:
+    matchLabels:
+      svc: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from: []
+      ports:
+        - protocol: TCP
+          port: 5000
