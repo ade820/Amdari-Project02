@@ -28,6 +28,11 @@ spec:
           {{- end -}}
     spec:
       serviceAccountName: transaction-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: transaction-service
           image: secureflow/transaction-service:latest
@@ -52,6 +57,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+            readOnlyRootFilesystem: true
           resources:
             requests:
               cpu: "100m"
@@ -59,6 +65,12 @@ spec:
             limits:
               cpu: "500m"
               memory: "256Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

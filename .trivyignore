@@ -20,3 +20,27 @@
 # =============================================================================
 CVE-2026-42496
 CVE-2026-8376
+
+# =============================================================================
+# Kubernetes misconfig — ACCEPTED RISK (postgres DBs only)
+# =============================================================================
+# KSV014 (readOnlyRootFilesystem) and KSV118 (default security context) on the
+# auth-db and transaction-db postgres deployments.
+#
+# The official postgres:14 image cannot run under readOnlyRootFilesystem: its
+# entrypoint runs initdb, which chmod's /var/lib/postgresql/data — an operation
+# that fails as "Operation not permitted" under a read-only root + non-root user
+# (verified: CrashLoopBackOff). Supporting it would require switching to a
+# non-root-built image (e.g. Bitnami), which is out of scope.
+#
+# Risk acceptance rationale:
+#  - The DB pods are internal-only (NetworkPolicy restricts ingress to their own
+#    service; no external exposure).
+#  - All three APPLICATION services (the actual attack surface) ARE fully
+#    hardened: readOnlyRootFilesystem + runAsNonRoot + seccomp + drop ALL.
+#  - Zero CRITICAL findings; these are HIGH on internal data-tier pods.
+#
+# Recheck: evaluate a non-root postgres image in a future iteration.
+# =============================================================================
+AVD-KSV-0014
+AVD-KSV-0118

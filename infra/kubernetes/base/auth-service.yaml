@@ -30,6 +30,11 @@ spec:
           {{- end -}}
     spec:
       serviceAccountName: auth-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: auth-service
           image: secureflow/auth-service:latest
@@ -55,6 +60,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+            readOnlyRootFilesystem: true
           # CK-05 remediated (Day 8): resource requests and limits
           resources:
             requests:
@@ -63,6 +69,12 @@ spec:
             limits:
               cpu: "500m"
               memory: "256Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
