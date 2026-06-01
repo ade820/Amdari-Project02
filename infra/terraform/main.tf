@@ -59,7 +59,7 @@ module "eks" {
   project           = var.project
   environment       = var.environment
   vpc_id            = module.vpc.vpc_id
-  public_subnet_ids = module.vpc.public_subnet_ids
+  private_subnet_ids = module.vpc.private_subnet_ids
 }
 
 module "rds" {
@@ -67,6 +67,6 @@ module "rds" {
   project           = var.project
   environment       = var.environment
   vpc_id            = module.vpc.vpc_id
-  public_subnet_ids = module.vpc.public_subnet_ids
+  private_subnet_ids = module.vpc.private_subnet_ids
   db_password       = var.db_password # IV-01 remediated: sourced from variable, not hardcoded
 }
