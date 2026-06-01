@@ -1,0 +1,92 @@
+# =============================================================================
+# OPA Gatekeeper ConstraintTemplates — four admission policies for SecureFlow
+# Apply BEFORE constraints.yaml (templates create the CRD kinds constraints use)
+# =============================================================================
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8snoprivileged
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNoPrivileged
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8snoprivileged
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          c.securityContext.privileged == true
+          msg := sprintf("Container %v runs privileged; privileged containers are not allowed (CK-04)", [c.name])
+        }
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8snolatesttag
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNoLatestTag
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8snolatesttag
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          endswith(c.image, ":latest")
+          msg := sprintf("Container %v uses :latest tag; pin to a digest (CK-06)", [c.name])
+        }
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          not contains(c.image, ":")
+          not contains(c.image, "@sha256:")
+          msg := sprintf("Container %v has no explicit tag (implicit :latest); pin to a digest (CK-06)", [c.name])
+        }
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequireresources
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireResources
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequireresources
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          not c.resources.limits.cpu
+          msg := sprintf("Container %v has no CPU limit (CK-05)", [c.name])
+        }
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          not c.resources.limits.memory
+          msg := sprintf("Container %v has no memory limit (CK-05)", [c.name])
+        }
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequirelabels
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireLabels
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequirelabels
+        violation[{"msg": msg}] {
+          required := {"app", "team"}
+          provided := {label | input.review.object.metadata.labels[label]}
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("Resource is missing required labels: %v (CK-07)", [missing])
+        }
