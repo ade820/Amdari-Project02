@@ -43,7 +43,7 @@ spec:
               value: authdb
             - name: DB_USER
               value: authuser
-          # CK-04 — privileged container. (Day 7 hardening)
+         # CK-04 — privileged container. (Day 7 hardening)
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
@@ -52,7 +52,7 @@ spec:
             capabilities:
               drop:
                 - ALL
-
+                          # CK-05 — no resources. (Day 7 hardening)
 ---
 apiVersion: v1
 kind: Service
