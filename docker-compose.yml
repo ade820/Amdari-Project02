@@ -7,7 +7,6 @@
 #   IV-07  no network segmentation between services
 #   CK-03  postgres:14 used without digest pinning
 
-version: "3.8"
 
 services:
   auth-db:
@@ -15,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: authdb
       POSTGRES_USER: authuser
-      POSTGRES_PASSWORD: ***REMOVED***
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-devpass_auth}
     ports:
       - "5432:5432"          # IV-02 — exposed on host.
     volumes:
@@ -27,7 +26,7 @@ services:
     environment:
       POSTGRES_DB: transactiondb
       POSTGRES_USER: txuser
-      POSTGRES_PASSWORD: ***REMOVED***
+      POSTGRES_PASSWORD: ${TX_DB_PASSWORD:-devpass_tx}
     ports:
       - "5433:5432"          # IV-02 — exposed on host.
     volumes:
@@ -41,8 +40,8 @@ services:
       DB_PORT: 5432
       DB_NAME: authdb
       DB_USER: authuser
-      DB_PASSWORD: ***REMOVED***        # IV-01, IV-03
-      JWT_SECRET: ***REMOVED*** # AV-07, IV-03
+      DB_PASSWORD: ${AUTH_DB_PASSWORD:-devpass_auth}        # IV-01, IV-03 (prod: Vault-injected in K8s)
+      JWT_SECRET: ${JWT_SECRET:-devjwt_shared} # AV-07, IV-03 (prod: Vault-injected in K8s)
     ports:
       - "5001:5001"
     depends_on:
@@ -55,7 +54,7 @@ services:
       DB_PORT: 5432
       DB_NAME: transactiondb
       DB_USER: txuser
-      DB_PASSWORD: ***REMOVED***           # IV-01, IV-03
+      DB_PASSWORD: ${TX_DB_PASSWORD:-devpass_tx}           # IV-01, IV-03 (prod: Vault-injected in K8s)
       AUTH_SERVICE_URL: http://auth-service:5001
     ports:
       - "5002:5002"
@@ -66,7 +65,7 @@ services:
   frontend:
     build: ./services/frontend
     environment:
-      SESSION_SECRET: ***REMOVED***           # FV-03, IV-03
+      SESSION_SECRET: ${SESSION_SECRET:-devsession}           # FV-03, IV-03 (prod: Vault-injected in K8s)
       AUTH_SERVICE_URL: http://auth-service:5001
       TRANSACTION_SERVICE_URL: http://transaction-service:5002
     ports:

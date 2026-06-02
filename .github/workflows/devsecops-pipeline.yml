@@ -601,7 +601,59 @@ jobs:
     runs-on: ubuntu-latest
     needs: [image-sign]
     if: always() && needs.image-sign.result == 'success'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "Stage 7 placeholder — ZAP comes Week 2"
+
+      - name: Bring up the application stack
+        run: |
+          export AUTH_DB_PASSWORD=dast_auth_pw
+          export TX_DB_PASSWORD=dast_tx_pw
+          export JWT_SECRET=dast_jwt
+          export SESSION_SECRET=dast_session
+          docker compose up -d --build
+          echo "Waiting for frontend to become available..."
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/login || echo 000)
+            echo "attempt $i: HTTP $code"
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+
+      - name: Run OWASP ZAP baseline scan
+        run: |
+          mkdir -p zap-report
+          # -I = informational (do not fail the job on warnings); findings route to AppSec.
+          docker run --rm --network host \
+            -v "$(pwd)/zap-report:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t http://localhost:5000 \
+            -I -r zap-report.html -J zap-report.json \
+            || echo "ZAP completed with findings (non-blocking, routed to AppSec)"
+
+      - name: Summarise ZAP findings
+        if: always()
+        run: |
+          if [ -f zap-report/zap-report.json ]; then
+            WARN=$(jq '[.site[]?.alerts[]?] | length' zap-report/zap-report.json 2>/dev/null || echo "?")
+            echo "## Stage 7 — OWASP ZAP DAST" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "DAST baseline scan of the running application completed." >> "$GITHUB_STEP_SUMMARY"
+            echo "Alerts found: ${WARN} (app-layer; routed to AppSec, non-blocking per gate policy)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Full HTML/JSON reports attached as artifacts." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ZAP JSON report not found; see logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-dast-report
+          path: zap-report/
+          retention-days: 30
+
+      - name: Tear down the application stack
+        if: always()
+        run: docker compose down -v
