@@ -18,9 +18,8 @@ kind: K8sNoLatestTag
 metadata:
   name: no-latest-tag
 spec:
-  # dryrun: audits and reports violations but does NOT block admission.
-  # Enforcement activates once images are pinned to Cosign-signed digests (Stage 6).
-  enforcementAction: dryrun
+  # Enforced: images are now pinned to Cosign-signed GHCR digests (Stage 6).
+  enforcementAction: deny
   match:
     kinds:
       - apiGroups: ["apps"]

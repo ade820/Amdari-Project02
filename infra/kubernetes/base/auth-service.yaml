@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: auth-service
-          image: secureflow/auth-service:latest
+          image: ghcr.io/ade820/secureflow-auth-service@sha256:d9ba724f1d433728bd16ace53aedfe9a75bcaf61683da2d6ee35b903cffad5cb
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:

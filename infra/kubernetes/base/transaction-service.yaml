@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: transaction-service
-          image: secureflow/transaction-service:latest
+          image: ghcr.io/ade820/secureflow-transaction-service@sha256:77225a8c879b34c0beea3ea45ba49a9737a57076badeeea98abdcf3f9f46d44f
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:

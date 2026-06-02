@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: secureflow/frontend:latest
+          image: ghcr.io/ade820/secureflow-frontend@sha256:dc04e1be01f33e4d1a7e905bcaef78e8043d4d7baf7e09333f3fdc7046101c2b
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
