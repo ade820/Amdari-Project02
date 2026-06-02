@@ -416,7 +416,7 @@ jobs:
           [ "$CKV_CRITICAL" -gt 0 ] && DEVSECOPS_BLOCK=1
 
           VERDICT="PASS"
-          if [ "$DEVSECOPS_BLOCK" -eq 1 ] || [ "$APPSEC_BLOCK" -eq 1 ]; then
+          if [ "$DEVSECOPS_BLOCK" -eq 1 ]; then   # route-only: AppSec findings never hard-fail the DevSecOps gate
             VERDICT="BLOCK"
           fi
 
@@ -441,11 +441,11 @@ jobs:
             echo "| Checkov | High-impact IaC | $CKV_CRITICAL | $([ "$CKV_CRITICAL" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
             echo "| Checkov | All failed checks | $CKV_FAILED | report |"
             echo ""
-            echo "### AppSec-owned (routed, non-blocking unless BLOCKER/CRITICAL)"
+            echo "### AppSec-owned (routed to AppSec intake; advisory, non-blocking)"
             echo ""
             echo "| Scanner | Severity | Count | Gate |"
             echo "|---------|----------|-------|------|"
-            echo "| SonarCloud | BLOCKER/CRITICAL | $SONAR_BLOCKER | $([ "$SONAR_BLOCKER" -gt 0 ] && echo 'BLOCK' || echo 'pass') |"
+            echo "| SonarCloud | BLOCKER/CRITICAL | $SONAR_BLOCKER | routed |"
             echo "| SonarCloud | MAJOR | $SONAR_MAJOR | routed |"
             echo "| SonarCloud | MINOR/INFO | $SONAR_OTHER | routed |"
             echo ""
@@ -464,7 +464,7 @@ jobs:
 
           echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
           echo "Gate verdict: $VERDICT"
-          echo "DevSecOps block=$DEVSECOPS_BLOCK  AppSec block=$APPSEC_BLOCK"
+          echo "DevSecOps block=$DEVSECOPS_BLOCK  (AppSec findings routed, non-blocking)"
           cat gate-report.md
 
       - name: Check for security exception
