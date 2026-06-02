@@ -48,3 +48,40 @@
   dedicated writing session.
 - Engagement cleanup: delete pre-rewrite backups (hold old secrets) at the end.
 - Vault dev-mode wipes on Docker Desktop restart - re-run Day 6 config before app pods.
+
+
+## ADDENDUM - gate policy + digest pinning completed (same session)
+
+### Gate policy: route-only (DECISION MADE)
+- Decided: AppSec-owned SonarQube BLOCKERs route to AppSec intake, never hard-fail
+  the DevSecOps gate. Pipeline can be green when DevSecOps-owned scanners are clean.
+- Code aligned: verdict now blocks only on DEVSECOPS_BLOCK (removed the APPSEC_BLOCK
+  clause, which was never actually set - the route-only behaviour had been accidental).
+  AppSec table header -> "routed to AppSec intake; advisory, non-blocking"; SonarCloud
+  BLOCKER row gate column -> "routed". Verdict logic, behaviour, and labels now agree.
+- Commit 8113e41.
+
+### Digest pinning + OPA enforce (DONE, enforcement PROVEN)
+- Resolved signed GHCR digests (via docker buildx imagetools) for the three services
+  built/signed by Stage 6 on commit 8113e41:
+    auth-service        sha256:d9ba724f...ad5cb
+    transaction-service sha256:77225a8c...6d44f
+    frontend            sha256:dc04e1be...01c2b
+- Pinned infra/kubernetes/base/{auth,transaction,frontend}.yaml from
+  secureflow/<svc>:latest to ghcr.io/ade820/secureflow-<svc>@sha256:<digest>.
+- Flipped OPA no-latest-tag constraint enforcementAction dryrun -> deny.
+- Enforcement PROVEN: a test Deployment using nginx:latest in secureflow was DENIED
+  at admission:  [no-latest-tag] Container c uses :latest tag; pin to a digest (CK-06).
+- Note on scope: constraint matches Deployments in secureflow (bare kubectl-run Pods
+  are out of match scope by design). The 3 already-running services were admitted under
+  dryrun and still run their local images (audit totalViolations=3); enforcement applies
+  to NEW admissions. A full redeploy from the pinned manifests (GHCR pull via
+  imagePullSecret) would drop the audit count to 0 - deferred (avoids GHCR-auth on the
+  local cluster). Honest statement: enforced for new admissions, proven via denial test,
+  existing pods grandfathered pending redeploy.
+- Commit 3ee4bf5.
+
+## Remaining after this session
+- ONLY the final case-study report (14-20 pp) + presentation deck (12-15 slides).
+- Plus end-of-engagement cleanup: delete pre-rewrite backups (old secrets).
+- Vault re-config runbook still applies if Docker Desktop restarts.
