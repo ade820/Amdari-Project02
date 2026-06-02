@@ -624,6 +624,7 @@ jobs:
       - name: Run OWASP ZAP baseline scan
         run: |
           mkdir -p zap-report
+          chmod 777 zap-report   # ZAP runs as its own UID; needs write access to the mount
           # -I = informational (do not fail the job on warnings); findings route to AppSec.
           docker run --rm --network host \
             -v "$(pwd)/zap-report:/zap/wrk:rw" \
@@ -653,6 +654,7 @@ jobs:
           name: zap-dast-report
           path: zap-report/
           retention-days: 30
+          if-no-files-found: error
 
       - name: Tear down the application stack
         if: always()
